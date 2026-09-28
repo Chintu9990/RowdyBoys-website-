@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rules · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container">
+  <h1 class="page-title">Rules</h1>
+  <p class="page-sub">Tournament rules — select a tournament</p>
+  <div class="card" style="margin-bottom:18px">
+    <select id="tournament_id"><option value="">Select tournament…</option></select>
+  </div>
+  <div id="list">Loading…</div>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/rules');
+renderFooter();
+
+async function load() {
+  const list = document.getElementById('list');
+  const t = await API.get('/api/tournaments');
+  const sel = document.getElementById('tournament_id');
+  t.forEach(x => sel.innerHTML += `<option value="${x.id}">${esc(x.name)}</option>`);
+  if (t.length) { sel.value = t[0].id; showRules(); }
+  else list.innerHTML = emptyHTML('📜','No tournaments');
+  sel.addEventListener('change', showRules);
+}
+
+async function showRules() {
+  const list = document.getElementById('list');
+  const tid = document.getElementById('tournament_id').value;
+  if (!tid) { list.innerHTML = emptyHTML('📜','Select a tournament'); return; }
+  list.innerHTML = loadingHTML();
+  const rules = await API.get(`/api/tournaments/${tid}/rules`);
+  if (!rules.length) { list.innerHTML = emptyHTML('📜','No rules posted yet'); return; }
+  list.innerHTML = `<div class="card"><ol style="margin:0;padding-left:18px;line-height:1.9;font-size:14px">
+    ${rules.map(r => `<li style="margin-bottom:8px">${esc(r.rule_text)}</li>`).join('')}
+  </ol></div>`;
+}
+
+load();
+</script>
+</body>
+</html>

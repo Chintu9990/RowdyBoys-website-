@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Team · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container" id="main">Loading…</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/teams');
+renderFooter();
+
+const id = getIdFromPath();
+
+async function load() {
+  const main = document.getElementById('main');
+  main.innerHTML = loadingHTML();
+  try {
+    const t = await API.get('/api/teams/' + id);
+    const s = t.stats || {};
+
+    main.innerHTML = `
+      <div class="card" style="margin-bottom:18px">
+        <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+          <img class="team-logo lg" src="${t.logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+          <div style="flex:1;min-width:200px">
+            <h1 class="page-title" style="margin:0 0 6px">${esc(t.name)}</h1>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <span class="badge badge-completed">${esc(t.type.toUpperCase())}</span>
+              ${statusBadge(t.status)}
+            </div>
+            <div style="color:var(--muted);font-size:13px;margin-top:8px">
+              <a href="/tournament/${t.tournament_id}" style="color:var(--orange)">${esc(t.tournament_name||'')}</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-4" style="margin-bottom:20px">
+        <div class="stat"><div class="stat-value">${s.played||0}</div><div class="stat-label">Matches</div></div>
+        <div class="stat"><div class="stat-value">${s.wins||0}</div><div class="stat-label">Wins</div></div>
+        <div class="stat"><div class="stat-value">${s.kills||0}</div><div class="stat-label">Kills</div></div>
+        <div class="stat"><div class="stat-value" style="color:var(--orange)">${s.points||0}</div><div class="stat-label">Points</div></div>
+      </div>
+
+      <div class="grid grid-2" style="margin-bottom:20px">
+        <div class="card">
+          <div class="card-title">Players</div>
+          ${t.players.map(p => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--border)">
+              <div>
+                <a href="/player/${p.id}" style="font-weight:700;font-size:13px">${esc(p.name)}</a>
+                <div style="font-size:11px;color:var(--muted)">Slot ${p.slot}</div>
+              </div>
+            </div>`).join('')}
+        </div>
+
+        <div class="card">
+          <div class="card-title">Statistics</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px">
+            <div><span style="color:var(--muted)">Rank</span><br><b>#${s.rank||'-'}</b></div>
+            <div><span style="color:var(--muted)">Losses</span><br><b>${s.losses||0}</b></div>
+            <div><span style="color:var(--muted)">Draws</span><br><b>${s.draws||0}</b></div>
+            <div><span style="color:var(--muted)">Rounds Won</span><br><b>${s.rounds_won||0}</b></div>
+            <div><span style="color:var(--muted)">Rounds Lost</span><br><b>${s.rounds_lost||0}</b></div>
+            <div><span style="color:var(--muted)">Round Diff</span><br><b>${s.rd>0?'+':''}${s.rd||0}</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-title" style="margin-bottom:12px">Recent Matches</div>
+      ${t.matches.length ? `<div class="grid grid-2">${t.matches.map(m => `
+        <a class="match-card ${m.status==='LIVE'?'live':''}" href="/match/${m.id}">
+          <div style="display:flex;justify-content:space-between">${statusBadge(m.status)}<span style="font-size:11px;color:var(--muted)">${esc(m.stage||'League')}</span></div>
+          <div class="match-row">
+            <div class="match-team"><div class="match-team-name">${esc(m.team_a_name||'TBD')}</div></div>
+            <div class="match-score">${m.status==='COMPLETED'?`${m.team_a_rounds} : ${m.team_b_rounds}`:'VS'}</div>
+            <div class="match-team right"><div class="match-team-name">${esc(m.team_b_name||'TBD')}</div></div>
+          </div>
+        </a>`).join('')}</div>`
+        : emptyHTML('⚔️','No matches played yet')}
+    `;
+  } catch (e) {
+    main.innerHTML = emptyHTML('⚠️','Not found', e.message);
+  }
+}
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Register Team · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container">
+  <h1 class="page-title">Register Your Team</h1>
+  <p class="page-sub">Fill in the form below to enter the tournament</p>
+  <div id="wrap">Loading…</div>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/register');
+renderFooter();
+
+const params = new URLSearchParams(location.search);
+let preselectedT = params.get('t') ? parseInt(params.get('t')) : null;
+let currentType = 'solo';
+
+async function load() {
+  const wrap = document.getElementById('wrap');
+  try {
+    const tourneys = await API.get('/api/tournaments?status=registration_open');
+    if (!tourneys.length) {
+      wrap.innerHTML = emptyHTML('🚫','REGISTRATION CLOSED','No tournament is currently accepting registrations.');
+      return;
+    }
+
+    const pickT = preselectedT && tourneys.find(x=>x.id===preselectedT) ? preselectedT : tourneys[0].id;
+
+    wrap.innerHTML = `
+      <form id="regForm" class="card" style="max-width:640px;margin:0 auto">
+        <div class="form-group">
+          <label>Tournament</label>
+          <select id="tournament_id" required>
+            ${tourneys.map(t=>`<option value="${t.id}" ${t.id===pickT?'selected':''}>${esc(t.name)} (${esc(t.mode.toUpperCase())})</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Team Type</label>
+          <div class="type-picker" id="typePicker">
+            <button type="button" data-type="solo">SOLO · 1</button>
+            <button type="button" data-type="duo">DUO · 2</button>
+            <button type="button" data-type="squad">SQUAD · 4</button>
+          </div>
+          <input type="hidden" id="type" value="solo">
+        </div>
+
+        <div class="form-group">
+          <label>Team Name</label>
+          <input id="teamName" maxlength="60" required placeholder="e.g. ROWDY WARRIORS">
+        </div>
+
+        <div id="players"></div>
+
+        <div class="form-group">
+          <label>Contact (WhatsApp)</label>
+          <input id="contact" maxlength="40" required placeholder="+91 ...">
+        </div>
+
+        <div class="form-group">
+          <label>Team Logo (optional, max 2MB)</label>
+          <input type="file" id="logo" accept="image/png,image/jpeg,image/webp,image/gif">
+        </div>
+
+        <button class="btn btn-primary" type="submit" style="width:100%" id="submitBtn">Register Team</button>
+      </form>
+    `;
+
+    setupTypePicker();
+    renderPlayers('solo');
+    document.getElementById('regForm').addEventListener('submit', submit);
+
+  } catch (e) {
+    wrap.innerHTML = emptyHTML('⚠️','Failed to load', e.message);
+  }
+}
+
+function setupTypePicker() {
+  const picker = document.getElementById('typePicker');
+  picker.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-type]');
+    if (!btn) return;
+    renderPlayers(btn.dataset.type);
+  });
+}
+
+function renderPlayers(type) {
+  currentType = type;
+  document.getElementById('type').value = type;
+  document.querySelectorAll('#typePicker button').forEach(b =>
+    b.classList.toggle('active', b.dataset.type === type));
+
+  const count = { solo: 1, duo: 2, squad: 4 }[type];
+  const container = document.getElementById('players');
+  const labels = type === 'solo' ? ['Player'] : ['Player 1','Player 2','Player 3','Player 4'].slice(0, count);
+
+  container.innerHTML = labels.map((lbl, i) => `
+    <div class="player-block">
+      <h4>${lbl.toUpperCase()}</h4>
+      <div class="player-fields">
+        <input data-i="${i}" data-f="name" placeholder="Name" required maxlength="40">
+        <input data-i="${i}" data-f="uid" placeholder="UID" required maxlength="30">
+      </div>
+    </div>`).join('');
+}
+
+async function submit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Registering…';
+
+  try {
+    const type = document.getElementById('type').value;
+    const count = { solo: 1, duo: 2, squad: 4 }[type];
+    const players = [];
+    for (let i = 0; i < count; i++) {
+      const name = document.querySelector(`input[data-i="${i}"][data-f="name"]`).value.trim();
+      const uid = document.querySelector(`input[data-i="${i}"][data-f="uid"]`).value.trim();
+      if (!name || !uid) throw new Error('All player names and UIDs are required');
+      players.push({ name, uid });
+    }
+
+    const fd = new FormData();
+    fd.append('tournament_id', document.getElementById('tournament_id').value);
+    fd.append('name', document.getElementById('teamName').value.trim());
+    fd.append('type', type);
+    fd.append('contact', document.getElementById('contact').value.trim());
+    fd.append('players', JSON.stringify(players));
+    const logo = document.getElementById('logo').files[0];
+    if (logo) fd.append('logo', logo);
+
+    const r = await API.postForm('/api/teams/register', fd);
+    toast('✓ Team registered! Awaiting admin approval.');
+    setTimeout(() => location.href = '/team/' + r.team_id, 1000);
+  } catch (err) {
+    toast(err.message, true);
+    btn.disabled = false;
+    btn.textContent = 'Register Team';
+  }
+}
+
+load();
+</script>
+</body>
+</html>

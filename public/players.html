@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Players · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container">
+  <h1 class="page-title">Players</h1>
+  <p class="page-sub">All registered players and their stats</p>
+  <div class="card" style="margin-bottom:18px">
+    <div class="grid grid-2" style="gap:10px">
+      <input id="q" placeholder="Search by name or UID…">
+      <select id="tournament_id"><option value="">All tournaments</option></select>
+    </div>
+  </div>
+  <div id="list">Loading…</div>
+  <div id="pager" style="margin-top:18px;display:flex;gap:8px;justify-content:center"></div>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/players');
+renderFooter();
+let page = 1;
+
+async function loadTournaments() {
+  const t = await API.get('/api/tournaments');
+  const sel = document.getElementById('tournament_id');
+  t.forEach(x => sel.innerHTML += `<option value="${x.id}">${esc(x.name)}</option>`);
+}
+
+async function load() {
+  const list = document.getElementById('list');
+  list.innerHTML = loadingHTML();
+  const params = new URLSearchParams({ page, limit: 40 });
+  const q = document.getElementById('q').value.trim();
+  const tid = document.getElementById('tournament_id').value;
+  if (q) params.set('q', q);
+  if (tid) params.set('tournament_id', tid);
+
+  try {
+    const data = await API.get('/api/players?' + params);
+    if (!data.players.length) { list.innerHTML = emptyHTML('👤','No players found'); document.getElementById('pager').innerHTML=''; return; }
+    list.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Player</th><th>Team</th><th>Tournament</th><th>Matches</th><th>Kills</th></tr></thead>
+      <tbody>${data.players.map(p => `
+        <tr>
+          <td><a href="/player/${p.id}" style="font-weight:700">${esc(p.name)}</a></td>
+          <td><a href="/team/${p.team_id}" style="color:var(--orange)">${esc(p.team_name)}</a></td>
+          <td style="font-size:12px;color:var(--muted)">${esc(p.tournament_name||'')}</td>
+          <td>${p.matches}</td>
+          <td><b>${p.kills}</b></td>
+        </tr>`).join('')}</tbody></table></div>`;
+    const tp = Math.ceil(data.total / data.limit);
+    document.getElementById('pager').innerHTML = tp>1 ? `
+      <button class="btn btn-ghost btn-sm" ${page<=1?'disabled':''} onclick="goPage(${page-1})">←</button>
+      <span style="padding:8px 12px;color:var(--muted);font-size:13px">${page} / ${tp}</span>
+      <button class="btn btn-ghost btn-sm" ${page>=tp?'disabled':''} onclick="goPage(${page+1})">→</button>`:'';
+  } catch (e) { list.innerHTML = emptyHTML('⚠️','Failed', e.message); }
+}
+function goPage(p){page=p;load();window.scrollTo({top:0,behavior:'smooth'});}
+
+['q','tournament_id'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {page=1;clearTimeout(window._t);window._t=setTimeout(load,300);});
+  document.getElementById(id).addEventListener('change', () => {page=1;load();});
+});
+(async()=>{await loadTournaments();load();})();
+</script>
+</body>
+</html>

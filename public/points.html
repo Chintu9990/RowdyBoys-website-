@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Points Table · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container">
+  <h1 class="page-title">Points Table</h1>
+  <p class="page-sub">Live standings — auto-calculated from match results</p>
+
+  <div class="card" style="margin-bottom:18px">
+    <select id="tournament_id"><option value="">Select tournament…</option></select>
+  </div>
+
+  <div id="list">Loading…</div>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/points');
+renderFooter();
+
+const tidFromUrl = new URLSearchParams(location.search).get('tournament');
+
+async function loadTournaments() {
+  const t = await API.get('/api/tournaments');
+  const sel = document.getElementById('tournament_id');
+  t.forEach(x => sel.innerHTML += `<option value="${x.id}">${esc(x.name)}</option>`);
+  if (tidFromUrl) sel.value = tidFromUrl;
+  else if (t.length) sel.value = t[0].id;
+  loadStandings();
+}
+
+async function loadStandings() {
+  const list = document.getElementById('list');
+  const tid = document.getElementById('tournament_id').value;
+  if (!tid) { list.innerHTML = emptyHTML('📊','Select a tournament'); return; }
+  list.innerHTML = loadingHTML();
+  try {
+    const data = await API.get(`/api/tournaments/${tid}/standings`);
+    if (!data.length) { list.innerHTML = emptyHTML('📊','No standings yet'); return; }
+    list.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr>
+        <th>Rank</th><th>Team</th>
+        <th>P</th><th>W</th><th>L</th><th>D</th>
+        <th>Kills</th><th>RW</th><th>RL</th><th>RD</th><th>Points</th>
+      </tr></thead>
+      <tbody>${data.map(s => `
+        <tr>
+          <td><span class="rank-badge">${s.rank}</span></td>
+          <td><a href="/team/${s.team_id}" class="table-team">
+            <img src="${s.logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+            <span style="font-weight:700">${esc(s.name)}</span>
+          </a></td>
+          <td>${s.played}</td><td>${s.wins}</td><td>${s.losses}</td><td>${s.draws}</td>
+          <td>${s.kills}</td><td>${s.rounds_won}</td><td>${s.rounds_lost}</td>
+          <td>${s.rd>0?'+':''}${s.rd}</td>
+          <td><b style="color:var(--orange)">${s.points}</b></td>
+        </tr>`).join('')}</tbody>
+    </table></div>`;
+  } catch (e) {
+    list.innerHTML = emptyHTML('⚠️','Failed', e.message);
+  }
+}
+
+document.getElementById('tournament_id').addEventListener('change', () => {
+  history.replaceState(null,'','/points?tournament='+document.getElementById('tournament_id').value);
+  loadStandings();
+});
+
+loadTournaments();
+</script>
+</body>
+</html>

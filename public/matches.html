@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Matches · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container">
+  <h1 class="page-title">Match Center</h1>
+  <p class="page-sub">Live · Upcoming · Completed</p>
+
+  <div class="card" style="margin-bottom:18px">
+    <div class="grid grid-3" style="gap:10px">
+      <input id="q" placeholder="Search teams…">
+      <select id="tournament_id"><option value="">All tournaments</option></select>
+      <select id="status">
+        <option value="">All statuses</option>
+        <option value="LIVE">🔴 Live</option>
+        <option value="UPCOMING">🟡 Upcoming</option>
+        <option value="COMPLETED">⚪ Completed</option>
+        <option value="POSTPONED">🟠 Postponed</option>
+        <option value="CANCELLED">🔴 Cancelled</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="list">Loading…</div>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/matches');
+renderFooter();
+
+async function loadTournaments() {
+  const t = await API.get('/api/tournaments');
+  const sel = document.getElementById('tournament_id');
+  t.forEach(x => sel.innerHTML += `<option value="${x.id}">${esc(x.name)}</option>`);
+}
+
+function matchCardHTML(m) {
+  const isCompleted = m.status === 'COMPLETED';
+  const winner = m.winner_id;
+  return `
+    <a class="match-card ${m.status==='LIVE'?'live':''}" href="/match/${m.id}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        ${statusBadge(m.status)}
+        <span style="font-size:11px;color:var(--muted)">${esc(m.tournament_name||'')}</span>
+      </div>
+      <div class="match-row">
+        <div class="match-team">
+          <img src="${m.team_a_logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+          <div class="match-team-name" style="${winner===m.team_a_id?'color:#4ade80':''}">${esc(m.team_a_name||'TBD')}</div>
+        </div>
+        <div class="match-score">${isCompleted?`${m.team_a_rounds} : ${m.team_b_rounds}`:'VS'}</div>
+        <div class="match-team right">
+          <div class="match-team-name" style="${winner===m.team_b_id?'color:#4ade80':''}">${esc(m.team_b_name||'TBD')}</div>
+          <img src="${m.team_b_logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+        </div>
+      </div>
+      <div class="match-meta">
+        <span>📅 ${fmtDate(m.match_date)}</span>
+        <span>⏰ ${esc(m.match_time||'TBA')}</span>
+      </div>
+      ${isCompleted&&winner?`<div style="font-size:11px;color:#4ade80;font-weight:800">Winner: ${esc(winner===m.team_a_id?m.team_a_name:m.team_b_name)}</div>`:''}
+    </a>`;
+}
+
+async function load() {
+  const list = document.getElementById('list');
+  list.innerHTML = loadingHTML();
+  const params = new URLSearchParams({ limit: 200 });
+  const q = document.getElementById('q').value.trim();
+  const tid = document.getElementById('tournament_id').value;
+  const st = document.getElementById('status').value;
+  if (q) params.set('q', q);
+  if (tid) params.set('tournament_id', tid);
+
+  try {
+    const data = await API.get('/api/matches?' + params);
+    let matches = data.matches;
+    if (st) matches = matches.filter(m => m.status === st);
+    if (!matches.length) { list.innerHTML = emptyHTML('⚔️','No matches found'); return; }
+
+    const groups = { LIVE: [], UPCOMING: [], COMPLETED: [], POSTPONED: [], CANCELLED: [] };
+    matches.forEach(m => (groups[m.status] = groups[m.status] || []).push(m));
+
+    let html = '';
+    const section = (title, arr) => arr.length ? `
+      <h2 class="card-title" style="margin:22px 0 12px">${title} (${arr.length})</h2>
+      <div class="grid grid-2">${arr.map(matchCardHTML).join('')}</div>
+    ` : '';
+
+    html += section('🔴 LIVE', groups.LIVE);
+    html += section('🟡 UPCOMING', groups.UPCOMING);
+    html += section('🟠 POSTPONED', groups.POSTPONED);
+    html += section('⚪ COMPLETED', groups.COMPLETED);
+    html += section('🔴 CANCELLED', groups.CANCELLED);
+
+    list.innerHTML = html;
+  } catch (e) {
+    list.innerHTML = emptyHTML('⚠️','Failed to load', e.message);
+  }
+}
+
+['q','tournament_id','status'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => { clearTimeout(window._t); window._t=setTimeout(load,300); });
+  document.getElementById(id).addEventListener('change', load);
+});
+
+(async () => { await loadTournaments(); load(); })();
+</script>
+</body>
+</html>

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tournament · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container" id="main">Loading…</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/tournaments');
+renderFooter();
+
+const id = getIdFromPath();
+
+async function load() {
+  const main = document.getElementById('main');
+  main.innerHTML = loadingHTML();
+  try {
+    const t = await API.get('/api/tournaments/' + id);
+    const tab = getTabFromPath() || 'overview';
+    const isOpen = t.status === 'registration_open';
+    const isFull = t.team_count >= t.max_teams;
+
+    const tabs = `
+      <div class="tabs">
+        ${['overview','teams','matches','points','bracket','prizes','rules'].map(x =>
+          `<a href="/tournament/${id}/${x}" class="${tab===x?'active':''}">${x[0].toUpperCase()+x.slice(1)}</a>`
+        ).join('')}
+      </div>`;
+
+    let body = '';
+    if (tab === 'overview') body = await overviewTab(t);
+    else if (tab === 'teams') body = await teamsTab();
+    else if (tab === 'matches') body = await matchesTab();
+    else if (tab === 'points') body = await pointsTab();
+    else if (tab === 'bracket') body = await bracketTab();
+    else if (tab === 'prizes') body = await prizesTab();
+    else if (tab === 'rules') body = await rulesTab();
+
+    main.innerHTML = `
+      <div style="margin-bottom:18px">
+        <h1 class="page-title">${esc(t.name)}</h1>
+        <p class="page-sub">${esc(t.game)} · ${esc(t.mode.toUpperCase())} · ${esc(t.format)}</p>
+      </div>
+      ${tabs}
+      <div id="tabBody">${body}</div>
+    `;
+
+    // Register button state
+    if (tab === 'overview') {
+      const btn = document.getElementById('regBtn');
+      if (btn) btn.addEventListener('click', e => {
+        if (!isOpen || isFull) { e.preventDefault(); return; }
+      });
+    }
+  } catch (e) {
+    main.innerHTML = emptyHTML('⚠️','Not found', e.message);
+  }
+}
+
+async function overviewTab(t) {
+  const isOpen = t.status === 'registration_open';
+  const isFull = t.team_count >= t.max_teams;
+  let regMsg = '';
+  if (isFull) regMsg = `<div style="color:#ff5c52;font-weight:800;margin-top:10px">TOURNAMENT FULL</div>`;
+  else if (isOpen) regMsg = `<div style="color:#4ade80;font-weight:800;margin-top:10px">🟢 REGISTRATION OPEN</div>`;
+  else if (t.status==='registration_closed') regMsg = `<div style="color:#fbbf24;font-weight:800;margin-top:10px">🟡 REGISTRATION CLOSED</div>`;
+  else if (t.status==='completed') regMsg = `<div style="color:#cbd5e1;font-weight:800;margin-top:10px">⚪ TOURNAMENT COMPLETED</div>`;
+
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+        <div>
+          ${statusBadge(t.status)}
+          <div style="margin-top:12px;font-size:13px;color:var(--muted);line-height:1.7">
+            <div><b style="color:#fff">Start:</b> ${fmtDate(t.start_date)}</div>
+            <div><b style="color:#fff">Registration deadline:</b> ${fmtDate(t.reg_deadline)}</div>
+            <div><b style="color:#fff">Max teams:</b> ${t.max_teams}</div>
+          </div>
+        </div>
+        ${(isOpen && !isFull) ? `<a class="btn btn-primary" href="/register?t=${t.id}">Register Team</a>` : ''}
+      </div>
+      ${regMsg}
+      ${t.description ? `<div style="margin-top:16px;color:var(--muted);line-height:1.6;font-size:13px">${esc(t.description)}</div>` : ''}
+    </div>
+
+    <div class="grid grid-4">
+      <div class="stat"><div class="stat-value">${t.entry_fee>0?'₹'+t.entry_fee:'FREE'}</div><div class="stat-label">Entry Fee</div></div>
+      <div class="stat"><div class="stat-value">₹${t.prize_pool}</div><div class="stat-label">Prize Pool</div></div>
+      <div class="stat"><div class="stat-value">${t.team_count}/${t.max_teams}</div><div class="stat-label">Teams</div></div>
+      <div class="stat"><div class="stat-value">${esc(t.mode.toUpperCase())}</div><div class="stat-label">Mode</div></div>
+    </div>
+  `;
+}
+
+async function teamsTab() {
+  const data = await API.get(`/api/teams?tournament_id=${id}&status=approved&limit=200`);
+  if (!data.teams.length) return emptyHTML('👥','No approved teams yet');
+  return `<div class="grid grid-3">${data.teams.map(t => `
+    <div class="team-card">
+      <div class="team-card-head">
+        <img class="team-logo" src="${t.logo || '/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+        <div>
+          <div class="team-name">${esc(t.name)}</div>
+          <div class="team-meta">${esc(t.type.toUpperCase())}</div>
+        </div>
+      </div>
+      <div class="team-players-list">
+        ${t.players.map((p,i) => `<span><b>${esc(p.name)}</b></span>`).join('')}
+      </div>
+      <a class="btn btn-ghost btn-sm" href="/team/${t.id}">View Team →</a>
+    </div>`).join('')}</div>`;
+}
+
+async function matchesTab() {
+  const data = await API.get(`/api/matches?tournament_id=${id}&limit=200`);
+  if (!data.matches.length) return emptyHTML('⚔️','No matches scheduled');
+  return `<div class="grid grid-2">${data.matches.map(m => matchCardHTML(m)).join('')}</div>`;
+}
+
+function matchCardHTML(m) {
+  const isCompleted = m.status === 'COMPLETED';
+  const winner = m.winner_id;
+  return `
+    <a class="match-card ${m.status==='LIVE'?'live':''}" href="/match/${m.id}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        ${statusBadge(m.status)}
+        <span style="font-size:11px;color:var(--muted)">${esc(m.stage||'League')}</span>
+      </div>
+      <div class="match-row">
+        <div class="match-team">
+          <img src="${m.team_a_logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+          <div class="match-team-name" style="${winner===m.team_a_id?'color:#4ade80':''}">${esc(m.team_a_name||'TBD')}</div>
+        </div>
+        <div class="match-score">${isCompleted ? `${m.team_a_rounds} : ${m.team_b_rounds}` : 'VS'}</div>
+        <div class="match-team right">
+          <div class="match-team-name" style="${winner===m.team_b_id?'color:#4ade80':''}">${esc(m.team_b_name||'TBD')}</div>
+          <img src="${m.team_b_logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+        </div>
+      </div>
+      <div class="match-meta">
+        <span>📅 ${fmtDate(m.match_date)}</span>
+        <span>⏰ ${esc(m.match_time||'TBA')}</span>
+      </div>
+      ${isCompleted && winner ? `<div style="font-size:11px;color:#4ade80;font-weight:800">Winner: ${esc(winner===m.team_a_id?m.team_a_name:m.team_b_name)}</div>` : ''}
+    </a>`;
+}
+
+async function pointsTab() {
+  const data = await API.get(`/api/tournaments/${id}/standings`);
+  if (!data.length) return emptyHTML('📊','No standings yet');
+  return renderStandingsTable(data);
+}
+
+function renderStandingsTable(data) {
+  return `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>Rank</th><th>Team</th>
+      <th>P</th><th>W</th><th>L</th><th>D</th>
+      <th>Kills</th><th>RW</th><th>RL</th><th>RD</th><th>Points</th>
+    </tr></thead>
+    <tbody>${data.map(s => `
+      <tr>
+        <td><span class="rank-badge">${s.rank}</span></td>
+        <td>
+          <a href="/team/${s.team_id}" class="table-team">
+            <img src="${s.logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+            <span style="font-weight:700">${esc(s.name)}</span>
+          </a>
+        </td>
+        <td>${s.played}</td>
+        <td>${s.wins}</td>
+        <td>${s.losses}</td>
+        <td>${s.draws}</td>
+        <td>${s.kills}</td>
+        <td>${s.rounds_won}</td>
+        <td>${s.rounds_lost}</td>
+        <td>${s.rd>0?'+':''}${s.rd}</td>
+        <td><b style="color:var(--orange)">${s.points}</b></td>
+      </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+async function bracketTab() {
+  const t = await API.get('/api/tournaments/' + id);
+  if (t.format === 'league') {
+    const data = await API.get(`/api/tournaments/${id}/standings`);
+    return `<div class="card" style="margin-bottom:14px"><b style="color:var(--orange)">LEAGUE TOURNAMENT</b> — showing standings</div>` + renderStandingsTable(data);
+  }
+  const data = await API.get(`/api/tournaments/${id}/bracket`);
+  if (!data.length) return emptyHTML('🥇','Bracket not yet generated','Knockout matches will appear here.');
+  const stages = ['QF','SF','Final','GF'];
+  const grouped = {};
+  data.forEach(m => { (grouped[m.stage] = grouped[m.stage] || []).push(m); });
+  const stageNames = { QF:'Quarter Final', SF:'Semi Final', Final:'Final', GF:'Grand Final' };
+  return Object.keys(grouped).map(stage => `
+    <div style="margin-bottom:22px">
+      <div class="card-title">${stageNames[stage]||stage}</div>
+      <div class="grid grid-2">${grouped[stage].map(m => matchCardHTML(m)).join('')}</div>
+    </div>`).join('');
+}
+
+async function prizesTab() {
+  const data = await API.get(`/api/tournaments/${id}/prizes`);
+  if (!data.length) return emptyHTML('🏅','No prizes announced yet');
+  return `<div class="grid grid-3">${data.map(p => `
+    <div class="card" style="text-align:center">
+      <div style="font-size:11px;color:var(--muted);letter-spacing:1.5px">POSITION #${p.position}</div>
+      <div style="font-size:26px;font-weight:900;color:var(--orange);margin:8px 0">₹${p.amount}</div>
+      <div style="font-size:13px">${esc(p.reward||'')}</div>
+      ${p.claimed?'<div class="badge badge-open" style="margin-top:10px">CLAIMED</div>':''}
+    </div>`).join('')}</div>`;
+}
+
+async function rulesTab() {
+  const data = await API.get(`/api/tournaments/${id}/rules`);
+  if (!data.length) return emptyHTML('📜','No rules posted yet');
+  return `<div class="card"><ol style="margin:0;padding-left:18px;line-height:1.9;font-size:13.5px">${
+    data.map(r => `<li style="margin-bottom:6px">${esc(r.rule_text)}</li>`).join('')
+  }</ol></div>`;
+}
+
+load();
+</script>
+</body>
+</html>

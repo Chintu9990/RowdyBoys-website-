@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  .admin-tab{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:18px}
+  .admin-tab button{padding:10px;border-radius:9px;background:var(--panel);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-weight:700;font-size:12px}
+  .admin-tab button.active{background:linear-gradient(135deg,rgba(255,59,48,.25),rgba(255,138,0,.15));border-color:rgba(255,138,0,.4);color:#fff}
+  @media(max-width:700px){.admin-tab{grid-template-columns:repeat(3,1fr)}}
+  .data-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:rgba(0,0,0,.2)}
+</style>
+</head>
+<body>
+<main class="container" id="main">Loading…</main>
+
+<script src="/js/common.js"></script>
+
+<script>
+
+<script>
+
+let ME = { loggedIn: false };
+const state = { tournament: null };
+
+async function boot() {
+  renderNav('');
+  renderFooter();
+  ME = await API.get('/api/auth/me');
+  if (!ME.loggedIn) renderLogin();
+  else renderAdmin();
+}
+
+function renderLogin() {
+  document.getElementById('main').innerHTML = `
+    <h1 class="page-title">Admin Login</h1>
+    <p class="page-sub">Restricted access</p>
+    <form id="loginForm" class="card" style="max-width:400px">
+      <div class="form-group"><label>Username</label><input id="u" required></div>
+      <div class="form-group"><label>Password</label><input id="p" type="password" required></div>
+      <button class="btn btn-primary" style="width:100%" type="submit">Login</button>
+    </form>`;
+  document.getElementById('loginForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      await API.post('/api/auth/login', { username: document.getElementById('u').value, password: document.getElementById('p').value });
+      toast('Logged in');
+      boot();
+    } catch (err) { toast(err.message, true); }
+  });
+}
+
+/* ---------- ADMIN SHELL ---------- */
+let currentTab = 'overview';
+function renderAdmin() {
+  document.getElementById('main').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div>
+        <h1 class="page-title" style="margin:0">Admin Dashboard</h1>
+        <p class="page-sub">Signed in as <b>${esc(ME.username)}</b></p>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="logout">Logout</button>
+    </div>
+    <div class="admin-tab" id="tabs">
+      ${['overview','tournaments','teams','matches','results','scoring','prizes','rules','logs'].map(t =>
+        `<button data-t="${t}" class="${currentTab===t?'active':''}">${t[0].toUpperCase()+t.slice(1)}</button>`
+      ).join('')}
+    </div>
+    <div id="panel"></div>`;
+  document.getElementById('logout').addEventListener('click', async () => {
+    await API.post('/api/auth/logout', {});
+    location.reload();
+  });
+  document.getElementById('tabs').addEventListener('click', e => {
+    const b = e.target.closest('button[data-t]');
+    if (!b) return;
+    currentTab = b.dataset.t;
+    document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x.dataset.t === currentTab));
+    loadTab();
+  });
+  loadTab();
+}
+
+function loadTab() {
+  const p = document.getElementById('panel');
+  p.innerHTML = loadingHTML();
+  ({
+    overview: tabOverview,
+    tournaments: tabTournaments,
+    teams: tabTeams,
+    matches: tabMatches,
+    results: tabResults,
+    scoring: tabScoring,
+    prizes: tabPrizes,
+    rules: tabRules,
+    logs: tabLogs
+  }[currentTab] || tabOverview)();
+}
+
+/* ---------- OVERVIEW ---------- */
+async function tabOverview() {
+  const p = document.getElementById('panel');
+  const d = await API.get('/api/admin/overview');
+  p.innerHTML = `
+    <div class="grid grid-3">
+      <div class="stat"><div class="stat-value">${d.tournaments}</div><div class="stat-label">Tournaments</div></div>
+      <div class="stat"><div class="stat-value">${d.teams}</div><div class="stat-label">Teams</div></div>
+      <div class="stat"><div class="stat-value">${d.players}</div><div class="stat-label">Players</div></div>
+      <div class="stat"><div class="stat-value">${d.matches}</div><div class="stat-label">Matches</div></div>
+      <div class="stat"><div class="stat-value" style="color:#fbbf24">${d.pending_teams}</div><div class="stat-label">Pending Teams</div></div>
+      <div class="stat"><div class="stat-value" style="color:#4ade80">${d.live_matches}</div><div class="stat-label">Live Matches</div></div>
+    </div>`;
+}
+
+/* ---------- TOURNAMENTS ---------- */
+async function tabTournaments() {
+  const p = document.getElementById('panel');
+  const list = await API.get('/api/tournaments');
+  p.innerHTML = `
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title">Create Tournament</div>
+      <form id="tForm" class="grid grid-2" style="gap:10px">
+        <input id="f-name" placeholder="Name" required>
+        <input id="f-game" placeholder="Game" value="Free Fire">
+        <select id="f-mode">
+          <option value="solo">Solo</option>
+          <option value="duo">Duo</option>
+          <option value="squad" selected>Squad</option>
+          <option value="any">Any</option>
+        </select>
+        <select id="f-format">
+          <option value="league" selected>League</option>
+          <option value="knockout">Knockout</option>
+          <option value="both">League + Knockout</option>
+        </select>
+        <input id="f-fee" type="number" placeholder="Entry Fee ₹" value="0">
+        <input id="f-prize" type="number" placeholder="Prize Pool ₹" value="0">
+        <input id="f-start" type="date" title="Start date">
+        <input id="f-deadline" type="date" title="Registration deadline">
+        <input id="f-max" type="number" placeholder="Max teams" value="25">
+        <select id="f-status">
+          <option value="registration_open" selected>Registration Open</option>
+          <option value="registration_closed">Registration Closed</option>
+          <option value="started">Started</option>
+          <option value="completed">Completed</option>
+        </select>
+        <textarea id="f-desc" placeholder="Description" style="grid-column:1/-1"></textarea>
+        <button class="btn btn-primary" type="submit" style="grid-column:1/-1">Create Tournament</button>
+      </form>
+    </div>
+    <div class="card-title">All Tournaments (${list.length})</div>
+    ${list.map(t => `
+      <div class="data-row">
+        <div>
+          <div style="font-weight:800">${esc(t.name)}</div>
+          <div style="font-size:12px;color:var(--muted)">${esc(t.game)} · ${esc(t.mode)} · ${t.team_count} teams</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" data-edit="${t.id}">Edit</button>
+          <button class="btn btn-danger btn-sm" data-del="${t.id}">Del</button>
+        </div>
+      </div>`).join('') || emptyHTML('🏆','No tournaments')}
+  `;
+
+  document.getElementById('tForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const body = {
+      name: document.getElementById('f-name').value,
+      game: document.getElementById('f-game').value,
+      mode: document.getElementById('f-mode').value,
+      format: document.getElementById('f-format').value,
+      entry_fee: parseFloat(document.getElementById('f-fee').value)||0,
+      prize_pool: parseFloat(document.getElementById('f-prize').value)||0,
+      start_date: document.getElementById('f-start').value || null,
+      reg_deadline: document.getElementById('f-deadline').value || null,
+      max_teams: parseInt(document.getElementById('f-max').value)||25,
+      status: document.getElementById('f-status').value,
+      description: document.getElementById('f-desc').value
+    };
+    try { await API.post('/api/tournaments', body); toast('Created'); loadTab(); }
+    catch (err) { toast(err.message, true); }
+  });
+
+  p.addEventListener('click', async e => {
+    const d = e.target.closest('button[data-del]');
+    const ed = e.target.closest('button[data-edit]');
+    if (d) {
+      if (!confirm('Delete tournament and ALL its data?')) return;
+      try { await API.del('/api/tournaments/' + d.dataset.del); toast('Deleted'); loadTab(); }
+      catch (err) { toast(err.message, true); }
+    }
+    if (ed) editTournament(parseInt(ed.dataset.edit));
+  });
+}
+
+async function editTournament(id) {
+  const t = await API.get('/api/tournaments/' + id);
+  const name = prompt('Name', t.name); if (name === null) return;
+  const status = prompt('Status (registration_open, registration_closed, started, completed)', t.status); if (status === null) return;
+  const max = prompt('Max teams', t.max_teams); if (max === null) return;
+  const prize = prompt('Prize pool', t.prize_pool); if (prize === null) return;
+  const fee = prompt('Entry fee', t.entry_fee); if (fee === null) return;
+  await API.put('/api/tournaments/' + id, { name, status, max_teams: parseInt(max)||25, prize_pool: parseFloat(prize)||0, entry_fee: parseFloat(fee)||0 });
+  toast('Updated'); loadTab();
+}
+
+/* ---------- TEAMS ---------- */
+async function tabTeams() {
+  const p = document.getElementById('panel');
+  const [all, tourneys] = await Promise.all([API.get('/api/teams?limit=200'), API.get('/api/tournaments')]);
+  const pending = all.teams.filter(t => t.status === 'pending');
+
+  p.innerHTML = `
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title">Pending Approvals (${pending.length})</div>
+      ${pending.length ? pending.map(t => `
+        <div class="data-row">
+          <div>
+            <div style="font-weight:800">${esc(t.name)}</div>
+            <div style="font-size:12px;color:var(--muted)">${esc(t.tournament_name||'')} · ${esc(t.type)} · ${esc(t.contact||'')}</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-primary btn-sm" data-app="${t.id}">Approve</button>
+            <button class="btn btn-danger btn-sm" data-rej="${t.id}">Reject</button>
+          </div>
+        </div>`).join('') : '<div style="color:var(--muted);font-size:13px">No pending teams</div>'}
+    </div>
+
+    <div class="card-title">All Teams (${all.teams.length})</div>
+    ${all.teams.map(t => `
+      <div class="data-row">
+        <div style="display:flex;gap:10px;align-items:center">
+          <img src="${t.logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'" style="width:36px;height:36px;border-radius:8px">
+          <div>
+            <div style="font-weight:700">${esc(t.name)}</div>
+            <div style="font-size:11px;color:var(--muted)">${esc(t.tournament_name||'')} · ${esc(t.type)} · ${t.status}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <a class="btn btn-ghost btn-sm" href="/team/${t.id}" target="_blank">View</a>
+          <button class="btn btn-danger btn-sm" data-del="${t.id}">Del</button>
+        </div>
+      </div>`).join('')}
+  `;
+
+  p.querySelectorAll('button[data-app]').forEach(b => b.addEventListener('click', async () => {
+    await API.put('/api/teams/' + b.dataset.app + '/status', { status: 'approved' });
+    toast('Approved'); loadTab();
+  }));
+  p.querySelectorAll('button[data-rej]').forEach(b => b.addEventListener('click', async () => {
+    await API.put('/api/teams/' + b.dataset.rej + '/status', { status: 'rejected' });
+    toast('Rejected'); loadTab();
+  }));
+  p.querySelectorAll('button[data-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Delete team?')) return;
+    await API.del('/api/teams/' + b.dataset.del);
+    toast('Deleted'); loadTab();
+  }));
+}
+
+/* ---------- MATCHES ---------- */
+async function tabMatches() {
+  const p = document.getElementById('panel');
+  const tourneys = await API.get('/api/tournaments');
+  if (!tourneys.length) { p.innerHTML = emptyHTML('⚔️','Create a tournament first'); return; }
+
+  const tid = state.tournament || tourneys[0].id;
+  state.tournament = tid;
+  const teams = await API.get(`/api/teams?tournament_id=${tid}&status=approved&limit=200`);
+  const matches = await API.get(`/api/matches?tournament_id=${tid}&limit=200`);
+
+  p.innerHTML = `
+    <div class="card" style="margin-bottom:18px">
+      <div class="form-group">
+        <label>Tournament</label>
+        <select id="pick-t">${tourneys.map(t=>`<option value="${t.id}" ${t.id===tid?'selected':''}>${esc(t.name)}</option>`).join('')}</select>
+      </div>
+      <div class="card-title">Create Match</div>
+      <form id="mForm" class="grid grid-2" style="gap:10px">
+        <select id="f-a" required>${teams.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+        <select id="f-b" required>${teams.teams.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+        <input id="f-date" type="date">
+        <input id="f-time" type="time">
+        <input id="f-type" placeholder="Match type" value="League">
+        <input id="f-rounds" type="number" placeholder="Rounds" value="6">
+        <select id="f-stage">
+          <option value="League">League</option>
+          <option value="QF">Quarter Final</option>
+          <option value="SF">Semi Final</option>
+          <option value="Final">Final</option>
+          <option value="GF">Grand Final</option>
+        </select>
+        <select id="f-status">
+          <option value="UPCOMING">UPCOMING</option>
+          <option value="LIVE">LIVE</option>
+          <option value="COMPLETED">COMPLETED</option>
+          <option value="POSTPONED">POSTPONED</option>
+          <option value="CANCELLED">CANCELLED</option>
+        </select>
+        <button class="btn btn-primary" type="submit" style="grid-column:1/-1">Create Match</button>
+      </form>
+    </div>
+
+    <div class="card-title">Matches for ${esc(tourneys.find(x=>x.id===tid).name)}</div>
+    ${matches.matches.map(m => `
+      <div class="data-row">
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:13px">${esc(m.team_a_name||'?')} <span style="color:var(--muted)">vs</span> ${esc(m.team_b_name||'?')}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${fmtDate(m.match_date)} · ${esc(m.match_time||'TBA')} · ${m.stage}</div>
+        </div>
+        ${statusBadge(m.status)}
+        <select data-setstatus="${m.id}" style="width:auto;padding:6px 8px;font-size:12px">
+          ${['UPCOMING','LIVE','COMPLETED','POSTPONED','CANCELLED'].map(s=>`<option ${m.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+        <button class="btn btn-danger btn-sm" data-delm="${m.id}">Del</button>
+      </div>`).join('') || emptyHTML('⚔️','No matches yet')}
+  `;
+
+  document.getElementById('pick-t').addEventListener('change', e => { state.tournament = parseInt(e.target.value); loadTab(); });
+
+  document.getElementById('mForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const a = document.getElementById('f-a').value;
+    const b = document.getElementById('f-b').value;
+    if (a === b) return toast('Teams must be different', true);
+    const body = {
+      tournament_id: tid,
+      team_a_id: parseInt(a), team_b_id: parseInt(b),
+      match_date: document.getElementById('f-date').value || null,
+      match_time: document.getElementById('f-time').value || null,
+      match_type: document.getElementById('f-type').value,
+      rounds: parseInt(document.getElementById('f-rounds').value)||6,
+      stage: document.getElementById('f-stage').value,
+      status: document.getElementById('f-status').value
+    };
+    try { await API.post('/api/matches', body); toast('Match created'); loadTab(); }
+    catch (err) { toast(err.message, true); }
+  });
+
+  p.querySelectorAll('select[data-setstatus]').forEach(s => s.addEventListener('change', async () => {
+    try { await API.put('/api/matches/' + s.dataset.setstatus, { status: s.value }); toast('Status updated'); }
+    catch (e) { toast(e.message, true); }
+  }));
+  p.querySelectorAll('button[data-delm]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Delete match?')) return;
+    await API.del('/api/matches/' + b.dataset.delm);
+    toast('Deleted'); loadTab();
+  }));
+}
+
+/* ---------- RESULTS ---------- */
+async function tabResults() {
+  const p = document.getElementById('panel');
+  const tourneys = await API.get('/api/tournaments');
+  if (!tourneys.length) { p.innerHTML = emptyHTML('📊','No tournaments'); return; }
+  const tid = state.tournament && tourneys.find(x=>x.id===state.tournament) ? state.tournament : tourneys[0].id;
+  state.tournament = tid;
+  const data = await API.get(`/api/matches?tournament_id=${tid}&limit=200`);
+
+  p.innerHTML = `
+    <div class="form-group"><label>Tournament</label>
+      <select id="pick-t">${tourneys.map(t=>`<option value="${t.id}" ${t.id===tid?'selected':''}>${esc(t.name)}</option>`).join('')}</select>
+    </div>
+    <div class="card-title">Enter / Edit Result</div>
+    ${data.matches.map(m => `
+      <div class="data-row">
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:13px">#${m.id} — ${esc(m.team_a_name||'?')} vs ${esc(m.team_b_name||'?')}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${m.status}${m.status==='COMPLETED'?` · ${m.team_a_rounds} : ${m.team_b_rounds}`:''}</div>
+        </div>
+        <button class="btn btn-primary btn-sm" data-result="${m.id}">Enter Result</button>
+      </div>`).join('') || emptyHTML('📊','No matches')}
+    <div class="modal-back" id="resModal"><div class="modal" id="resBody"></div></div>
+  `;
+
+  document.getElementById('pick-t').addEventListener('change', e => { state.tournament = parseInt(e.target.value); loadTab(); });
+
+  p.querySelectorAll('button[data-result]').forEach(b =>
+    b.addEventListener('click', () => openResultForm(parseInt(b.dataset.result))));
+}
+
+async function openResultForm(matchId) {
+  const m = await API.get('/api/matches/' + matchId);
+  const teamA = await API.get('/api/teams/' + m.team_a_id);
+  const teamB = await API.get('/api/teams/' + m.team_b_id);
+  const back = document.getElementById('resModal');
+  const body = document.getElementById('resBody');
+
+  const statMap = {};
+  (m.player_stats||[]).forEach(s => statMap[s.player_id] = s);
+
+  body.innerHTML = `
+    <h3>Result: ${esc(m.team_a_name)} vs ${esc(m.team_b_name)}</h3>
+    <div class="grid grid-2" style="gap:10px;margin-bottom:12px">
+      <div class="form-group"><label>${esc(m.team_a_name)} Rounds</label><input id="ra" type="number" value="${m.team_a_rounds??0}"></div>
+      <div class="form-group"><label>${esc(m.team_b_name)} Rounds</label><input id="rb" type="number" value="${m.team_b_rounds??0}"></div>
+    </div>
+    <div class="form-group"><label>Winner</label>
+      <select id="winner">
+        <option value="">Draw / None</option>
+        <option value="${m.team_a_id}" ${m.winner_id===m.team_a_id?'selected':''}>${esc(m.team_a_name)}</option>
+        <option value="${m.team_b_id}" ${m.winner_id===m.team_b_id?'selected':''}>${esc(m.team_b_name)}</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Match Status</label>
+      <select id="status">
+        ${['COMPLETED','LIVE','UPCOMING','POSTPONED','CANCELLED'].map(s=>`<option ${m.status===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea id="notes">${esc(m.notes||'')}</textarea></div>
+
+    <div class="card-title" style="margin-top:16px">${esc(m.team_a_name)} — Player Kills</div>
+    ${teamA.players.map(pl => `
+      <div class="player-block"><h4>${esc(pl.name)}</h4>
+        <div class="player-fields">
+          <div><label>Kills</label><input type="number" data-pid="${pl.id}" data-tid="${m.team_a_id}" data-f="kills" value="${statMap[pl.id]?.kills||0}"></div>
+          <div><label>Deaths</label><input type="number" data-pid="${pl.id}" data-tid="${m.team_a_id}" data-f="deaths" value="${statMap[pl.id]?.deaths||0}"></div>
+        </div>
+      </div>`).join('')}
+
+    <div class="card-title" style="margin-top:16px">${esc(m.team_b_name)} — Player Kills</div>
+    ${teamB.players.map(pl => `
+      <div class="player-block"><h4>${esc(pl.name)}</h4>
+        <div class="player-fields">
+          <div><label>Kills</label><input type="number" data-pid="${pl.id}" data-tid="${m.team_b_id}" data-f="kills" value="${statMap[pl.id]?.kills||0}"></div>
+          <div><label>Deaths</label><input type="number" data-pid="${pl.id}" data-tid="${m.team_b_id}" data-f="deaths" value="${statMap[pl.id]?.deaths||0}"></div>
+        </div>
+      </div>`).join('')}
+
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-ghost" id="closeModal" style="flex:1">Cancel</button>
+      <button class="btn btn-primary" id="saveResult" style="flex:1">SAVE RESULT</button>
+    </div>
+  `;
+
+  back.classList.add('open');
+  document.getElementById('closeModal').addEventListener('click', () => back.classList.remove('open'));
+  back.addEventListener('click', e => { if (e.target === back) back.classList.remove('open'); });
+
+  document.getElementById('saveResult').addEventListener('click', async () => {
+    const winner = document.getElementById('winner').value;
+    const stats = [];
+    document.querySelectorAll('input[data-pid]').forEach(inp => {
+      const pid = parseInt(inp.dataset.pid);
+      const tid = parseInt(inp.dataset.tid);
+      let entry = stats.find(x => x.player_id === pid);
+      if (!entry) { entry = { player_id: pid, team_id: tid, kills: 0, deaths: 0, rounds_played: 0 }; stats.push(entry); }
+      entry[inp.dataset.f] = parseInt(inp.value) || 0;
+    });
+
+    const payload = {
+      team_a_rounds: parseInt(document.getElementById('ra').value) || 0,
+      team_b_rounds: parseInt(document.getElementById('rb').value) || 0,
+      winner_id: winner ? parseInt(winner) : null,
+      notes: document.getElementById('notes').value,
+      status: document.getElementById('status').value,
+      player_stats: stats
+    };
+
+    try {
+      await API.post('/api/matches/' + m.id + '/result', payload);
+      toast('Result saved — standings recalculated');
+      back.classList.remove('open');
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+/* ---------- SCORING ---------- */
+async function tabScoring() {
+  const p = document.getElementById('panel');
+  const tourneys = await API.get('/api/tournaments');
+  if (!tourneys.length) { p.innerHTML = emptyHTML('📊','No tournaments'); return; }
+  const tid = state.tournament && tourneys.find(x=>x.id===state.tournament) ? state.tournament : tourneys[0].id;
+  state.tournament = tid;
+  const s = await API.get(`/api/tournaments/${tid}/scoring`);
+  const order = Array.isArray(s.rank_order) ? s.rank_order : ['points','wins','rd','kills'];
+
+  p.innerHTML = `
+    <div class="form-group"><label>Tournament</label>
+      <select id="pick-t">${tourneys.map(t=>`<option value="${t.id}" ${t.id===tid?'selected':''}>${esc(t.name)}</option>`).join('')}</select>
+    </div>
+    <div class="card">
+      <div class="card-title">Scoring Rules</div>
+      <div class="grid grid-2" style="gap:10px">
+        <div class="form-group"><label>Win Points</label><input id="f-w" type="number" step="0.5" value="${s.win_points}"></div>
+        <div class="form-group"><label>Draw Points</label><input id="f-d" type="number" step="0.5" value="${s.draw_points}"></div>
+        <div class="form-group"><label>Loss Points</label><input id="f-l" type="number" step="0.5" value="${s.loss_points}"></div>
+        <div class="form-group"><label>Points per Kill</label><input id="f-k" type="number" step="0.1" value="${s.kill_points}"></div>
+      </div>
+      <div class="form-group"><label>Ranking Priority (comma separated)</label>
+        <input id="f-order" value="${order.join(',')}">
+      </div>
+      <button class="btn btn-primary" id="saveScore">Save Scoring Rules</button>
+    </div>`;
+
+  document.getElementById('pick-t').addEventListener('change', e => { state.tournament = parseInt(e.target.value); loadTab(); });
+
+  document.getElementById('saveScore').addEventListener('click', async () => {
+    try {
+      await API.put('/api/tournaments/' + tid + '/scoring', {
+        win_points: parseFloat(document.getElementById('f-w').value)||0,
+        draw_points: parseFloat(document.getElementById('f-d').value)||0,
+        loss_points: parseFloat(document.getElementById('f-l').value)||0,
+        kill_points: parseFloat(document.getElementById('f-k').value)||0,
+        rank_order: document.getElementById('f-order').value.split(',').map(x=>x.trim()).filter(Boolean)
+      });
+      toast('Scoring rules saved');
+    } catch (e) { toast(e.message, true); }
+  });
+}
+
+/* ---------- PRIZES ---------- */
+async function tabPrizes() {
+  const p = document.getElementById('panel');
+  const tourneys = await API.get('/api/tournaments');
+  if (!tourneys.length) { p.innerHTML = emptyHTML('🏅','No tournaments'); return; }
+  const tid = state.tournament && tourneys.find(x=>x.id===state.tournament) ? state.tournament : tourneys[0].id;
+  state.tournament = tid;
+  const prizes = await API.get(`/api/tournaments/${tid}/prizes`);
+
+  p.innerHTML = `
+    <div class="form-group"><label>Tournament</label>
+      <select id="pick-t">${tourneys.map(t=>`<option value="${t.id}" ${t.id===tid?'selected':''}>${esc(t.name)}</option>`).join('')}</select>
+    </div>
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title">Add Prize</div>
+      <div class="grid grid-3" style="gap:10px">
+        <div class="form-group"><label>Position</label><input id="f-pos" type="number" value="1"></div>
+        <div class="form-group"><label>Reward</label><input id="f-rew" placeholder="e.g. Cash + Trophy"></div>
+        <div class="form-group"><label>Amount ₹</label><input id="f-amt" type="number" value="0"></div>
+      </div>
+      <button class="btn btn-primary" id="addP">Add Prize</button>
+    </div>
+    ${prizes.map(pr => `
+      <div class="data-row">
+        <div><b>#${pr.position}</b> — ₹${pr.amount} ${pr.reward?'· '+esc(pr.reward):''} ${pr.claimed?'<span class="badge badge-open">CLAIMED</span>':''}</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" data-claim="${pr.id}" data-v="${pr.claimed?0:1}">${pr.claimed?'Unclaim':'Mark Claimed'}</button>
+          <button class="btn btn-danger btn-sm" data-del="${pr.id}">Del</button>
+        </div>
+      </div>`).join('') || emptyHTML('🏅','No prizes yet')}
+  `;
+  document.getElementById('pick-t').addEventListener('change', e => { state.tournament = parseInt(e.target.value); loadTab(); });
+  document.getElementById('addP').addEventListener('click', async () => {
+    await API.post('/api/tournaments/' + tid + '/prizes', {
+      position: parseInt(document.getElementById('f-pos').value)||1,
+      reward: document.getElementById('f-rew').value,
+      amount: parseFloat(document.getElementById('f-amt').value)||0
+    });
+    toast('Added'); loadTab();
+  });
+  p.querySelectorAll('button[data-claim]').forEach(b => b.addEventListener('click', async () => {
+    const pr = prizes.find(x => x.id === parseInt(b.dataset.claim));
+    await API.put('/api/tournaments/' + tid + '/prizes/' + pr.id, { ...pr, claimed: parseInt(b.dataset.v) });
+    loadTab();
+  }));
+  p.querySelectorAll('button[data-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Delete prize?')) return;
+    await API.del('/api/tournaments/' + tid + '/prizes/' + b.dataset.del);
+    loadTab();
+  }));
+}
+
+/* ---------- RULES ---------- */
+async function tabRules() {
+  const p = document.getElementById('panel');
+  const tourneys = await API.get('/api/tournaments');
+  if (!tourneys.length) { p.innerHTML = emptyHTML('📜','No tournaments'); return; }
+  const tid = state.tournament && tourneys.find(x=>x.id===state.tournament) ? state.tournament : tourneys[0].id;
+  state.tournament = tid;
+  const rules = await API.get(`/api/tournaments/${tid}/rules`);
+
+  p.innerHTML = `
+    <div class="form-group"><label>Tournament</label>
+      <select id="pick-t">${tourneys.map(t=>`<option value="${t.id}" ${t.id===tid?'selected':''}>${esc(t.name)}</option>`).join('')}</select>
+    </div>
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title">Add Rule</div>
+      <div class="grid grid-2" style="gap:10px">
+        <div class="form-group" style="grid-column:1/-1"><label>Rule Text</label><textarea id="f-rule"></textarea></div>
+        <div class="form-group"><label>Order</label><input id="f-ord" type="number" value="${rules.length}"></div>
+      </div>
+      <button class="btn btn-primary" id="addR">Add Rule</button>
+    </div>
+    ${rules.map(r => `
+      <div class="data-row">
+        <div style="flex:1">${esc(r.rule_text)}</div>
+        <button class="btn btn-danger btn-sm" data-del="${r.id}">Del</button>
+      </div>`).join('') || emptyHTML('📜','No rules yet')}
+  `;
+  document.getElementById('pick-t').addEventListener('change', e => { state.tournament = parseInt(e.target.value); loadTab(); });
+  document.getElementById('addR').addEventListener('click', async () => {
+    const txt = document.getElementById('f-rule').value.trim();
+    if (!txt) return toast('Rule text required', true);
+    await API.post('/api/tournaments/' + tid + '/rules', { rule_text: txt, sort_order: parseInt(document.getElementById('f-ord').value)||0 });
+    toast('Added'); loadTab();
+  });
+  p.querySelectorAll('button[data-del]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('Delete rule?')) return;
+    await API.del('/api/tournaments/' + tid + '/rules/' + b.dataset.del);
+    loadTab();
+  }));
+}
+
+/* ---------- LOGS ---------- */
+async function tabLogs() {
+  const p = document.getElementById('panel');
+  const logs = await API.get('/api/admin/logs');
+  p.innerHTML = logs.length ? logs.map(l => `
+    <div class="data-row">
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:13px">${esc(l.action)}</div>
+        <div style="font-size:11px;color:var(--muted)">${esc(l.details||'')} · ${esc(l.admin_name||'system')} · ${new Date(l.created_at).toLocaleString()}</div>
+      </div>
+    </div>`).join('') : emptyHTML('📋','No activity yet');
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prizes · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container">
+  <h1 class="page-title">Prizes</h1>
+  <p class="page-sub">Prize distribution</p>
+  <div class="card" style="margin-bottom:18px">
+    <select id="tournament_id"><option value="">Select tournament…</option></select>
+  </div>
+  <div id="list">Loading…</div>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/rules');
+renderFooter();
+
+async function load() {
+  const list = document.getElementById('list');
+  const t = await API.get('/api/tournaments');
+  const sel = document.getElementById('tournament_id');
+  t.forEach(x => sel.innerHTML += `<option value="${x.id}">${esc(x.name)}</option>`);
+  if (t.length) { sel.value = t[0].id; showPrizes(); }
+  else list.innerHTML = emptyHTML('🏅','No tournaments');
+  sel.addEventListener('change', showPrizes);
+}
+
+async function showPrizes() {
+  const list = document.getElementById('list');
+  const tid = document.getElementById('tournament_id').value;
+  if (!tid) return;
+  list.innerHTML = loadingHTML();
+  const prizes = await API.get(`/api/tournaments/${tid}/prizes`);
+  if (!prizes.length) { list.innerHTML = emptyHTML('🏅','No prizes announced yet'); return; }
+  list.innerHTML = `<div class="grid grid-3">${prizes.map(p => `
+    <div class="card" style="text-align:center">
+      <div style="font-size:11px;color:var(--muted);letter-spacing:1.5px">POSITION #${p.position}</div>
+      <div style="font-size:28px;font-weight:900;color:var(--orange);margin:8px 0">₹${p.amount}</div>
+      <div style="font-size:13px">${esc(p.reward||'')}</div>
+      ${p.claimed?'<div class="badge badge-open" style="margin-top:10px">CLAIMED</div>':''}
+    </div>`).join('')}</div>`;
+}
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Match · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container" id="main">Loading…</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/matches');
+renderFooter();
+
+const id = getIdFromPath();
+
+async function load() {
+  const main = document.getElementById('main');
+  main.innerHTML = loadingHTML();
+  try {
+    const m = await API.get('/api/matches/' + id);
+
+    const teamAStats = m.player_stats.filter(s => s.team_id === m.team_a_id);
+    const teamBStats = m.player_stats.filter(s => s.team_id === m.team_b_id);
+    const killsA = teamAStats.reduce((a,s)=>a+(s.kills||0),0);
+    const killsB = teamBStats.reduce((a,s)=>a+(s.kills||0),0);
+    const isCompleted = m.status === 'COMPLETED';
+
+    main.innerHTML = `
+      <div class="card" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:12px;color:var(--muted)">${esc(m.tournament_name||'')} · ${esc(m.stage||'')}</div>
+          </div>
+          ${statusBadge(m.status)}
+        </div>
+        <div class="match-row">
+          <div class="match-team">
+            <img src="${m.team_a_logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'" style="width:56px;height:56px;border-radius:12px">
+            <div>
+              <div class="match-team-name" style="font-size:15px">${esc(m.team_a_name||'TBD')}</div>
+              ${m.team_a_id_ref?`<a href="/team/${m.team_a_id_ref}" style="font-size:11px;color:var(--orange)">View team</a>`:''}
+            </div>
+          </div>
+          <div style="text-align:center">
+            <div class="match-score" style="font-size:32px">${isCompleted?`${m.team_a_rounds} : ${m.team_b_rounds}`:'VS'}</div>
+            ${isCompleted?`<div style="font-size:11px;color:var(--muted)">Rounds</div>`:''}
+          </div>
+          <div class="match-team right">
+            <div style="text-align:right">
+              <div class="match-team-name" style="font-size:15px">${esc(m.team_b_name||'TBD')}</div>
+              ${m.team_b_id_ref?`<a href="/team/${m.team_b_id_ref}" style="font-size:11px;color:var(--orange)">View team</a>`:''}
+            </div>
+            <img src="${m.team_b_logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'" style="width:56px;height:56px;border-radius:12px">
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;justify-content:center;margin-top:16px;color:var(--muted);font-size:12px;flex-wrap:wrap">
+          <span>📅 ${fmtDate(m.match_date)}</span>
+          <span>⏰ ${esc(m.match_time||'TBA')}</span>
+          <span>🎮 ${esc(m.match_type||'')}</span>
+          <span>🔁 ${m.rounds} rounds</span>
+        </div>
+        ${isCompleted && m.winner_id ? `<div style="text-align:center;margin-top:14px;font-weight:900;color:#4ade80">🏆 WINNER: ${esc(m.winner_id===m.team_a_id?m.team_a_name:m.team_b_name)}</div>`:''}
+      </div>
+
+      ${isCompleted ? `
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-title">${esc(m.team_a_name)} — ${killsA} kills</div>
+            ${teamAStats.length ? teamAStats.map(s=>`
+              <div style="display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid var(--border)">
+                <span>${esc(s.player_name)}</span>
+                <b style="color:var(--orange)">${s.kills} K</b>
+              </div>`).join('') : `<div style="color:var(--muted);font-size:12px">No player stats</div>`}
+          </div>
+          <div class="card">
+            <div class="card-title">${esc(m.team_b_name)} — ${killsB} kills</div>
+            ${teamBStats.length ? teamBStats.map(s=>`
+              <div style="display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid var(--border)">
+                <span>${esc(s.player_name)}</span>
+                <b style="color:var(--orange)">${s.kills} K</b>
+              </div>`).join('') : `<div style="color:var(--muted);font-size:12px">No player stats</div>`}
+          </div>
+        </div>
+      ` : ''}
+    `;
+  } catch (e) {
+    main.innerHTML = emptyHTML('⚠️','Match not found', e.message);
+  }
+}
+
+load();
+</script>
+</body>
+</html>

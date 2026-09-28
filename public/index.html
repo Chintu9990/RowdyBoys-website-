@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ROWDY BOYS · Esports</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container" id="main">Loading…</main>
+<script src="/js/common.js"></script>
+<script>
+renderNav('/');
+renderFooter();
+
+async function load() {
+  const main = document.getElementById('main');
+  main.innerHTML = loadingHTML();
+  try {
+    const d = await API.get('/api/home');
+
+    if (!d.tournament) {
+      main.innerHTML = `
+        <div class="hero">
+          <h1>WELCOME TO <span>ROWDY BOYS</span></h1>
+          <p>India's next-level esports tournament platform. Create tournaments, register teams, track kills, auto-generate standings.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="/admin">Admin Panel</a>
+            <a class="btn btn-ghost" href="/tournaments">Tournaments</a>
+          </div>
+        </div>
+        <div class="card">${emptyHTML('🏆','NO TOURNAMENT AVAILABLE','Check back soon or ask an admin to create one.')}</div>
+      `;
+      return;
+    }
+
+    const t = d.tournament;
+    const isOpen = t.status === 'registration_open';
+    const isFull = t.is_full;
+
+    const liveBlock = d.live ? `
+      <div class="card" style="border-color:rgba(34,197,94,.4)">
+        <div class="card-title" style="color:#4ade80">🔴 LIVE NOW</div>
+        <div class="match-row">
+          <div class="match-team">
+            <img src="${d.live.team_a_logo || '/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+            <div class="match-team-name">${esc(d.live.team_a_name||'TBD')}</div>
+          </div>
+          <div class="match-score">${d.live.team_a_rounds ?? 0} : ${d.live.team_b_rounds ?? 0}</div>
+          <div class="match-team right">
+            <div class="match-team-name">${esc(d.live.team_b_name||'TBD')}</div>
+            <img src="${d.live.team_b_logo || '/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:10px"><a class="btn btn-ghost btn-sm" href="/match/${d.live.id}">View Match →</a></div>
+      </div>` : `
+      <div class="card">
+        <div class="card-title">Match Status</div>
+        <div style="font-weight:800;font-size:15px">NO MATCH CURRENTLY PLAYING</div>
+        ${d.next ? `
+          <div style="margin-top:12px;color:var(--muted);font-size:12px">Next up</div>
+          <div style="margin-top:6px;font-weight:700;font-size:13px">${esc(d.next.team_a_name||'TBD')} <span style="color:var(--muted)">vs</span> ${esc(d.next.team_b_name||'TBD')}</div>
+          <div style="color:var(--muted);font-size:12px;margin-top:4px">${fmtDateTime(d.next.match_date,d.next.match_time)}</div>
+          <div style="margin-top:10px"><a class="btn btn-ghost btn-sm" href="/match/${d.next.id}">View →</a></div>
+        ` : ''}
+      </div>`;
+
+    const topTeams = d.top_teams.length ? `
+      <div class="card">
+        <div class="card-title">Top Teams</div>
+        ${d.top_teams.map((s,i) => `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:${i?'1px solid var(--border)':'none'}">
+            <span class="rank-badge">${i+1}</span>
+            <img src="${s.logo || '/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'" style="width:28px;height:28px;border-radius:7px">
+            <a href="/team/${s.team_id}" style="flex:1;font-weight:700;font-size:13px">${esc(s.name)}</a>
+            <span style="color:var(--orange);font-weight:900">${s.points}</span>
+          </div>`).join('')}
+      </div>` : '';
+
+    const topPlayers = d.top_players.length ? `
+      <div class="card">
+        <div class="card-title">Top Killers</div>
+        ${d.top_players.map((p,i) => `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:${i?'1px solid var(--border)':'none'}">
+            <span class="rank-badge">${i+1}</span>
+            <a href="/player/${p.id}" style="flex:1;font-weight:700;font-size:13px">${esc(p.name)}</a>
+            <span style="color:var(--red);font-weight:900">${p.kills} K</span>
+          </div>`).join('')}
+      </div>` : '';
+
+    main.innerHTML = `
+      <div class="hero">
+        <h1>WELCOME TO <span>ROWDY BOYS</span></h1>
+        <p>Join our tournaments, dominate the leaderboard, and prove you're the best. Squad up. Play hard. Win harder.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="/register">Register Team</a>
+          <a class="btn btn-ghost" href="/tournament/${t.id}">View Tournament</a>
+          <a class="btn btn-ghost" href="/matches">Matches</a>
+          <a class="btn btn-ghost" href="/points">Points Table</a>
+        </div>
+      </div>
+
+      <div class="grid grid-2" style="margin-bottom:20px">
+        <div class="card">
+          <div class="card-title">Current Tournament</div>
+          <div style="font-size:18px;font-weight:900;margin-bottom:8px">${esc(t.name)}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            ${statusBadge(t.status)}
+            <span class="badge badge-completed">${esc(t.mode.toUpperCase())}</span>
+          </div>
+          <div class="grid grid-2" style="gap:10px">
+            <div class="stat"><div class="stat-value">${t.team_count}/${t.max_teams}</div><div class="stat-label">Teams</div></div>
+            <div class="stat"><div class="stat-value">${t.entry_fee>0?'₹'+t.entry_fee:'FREE'}</div><div class="stat-label">Entry</div></div>
+            <div class="stat"><div class="stat-value">₹${t.prize_pool}</div><div class="stat-label">Prize Pool</div></div>
+            <div class="stat"><div class="stat-value" style="font-size:14px">${fmtDate(t.start_date)}</div><div class="stat-label">Starts</div></div>
+          </div>
+          ${isFull ? `<div style="margin-top:12px;font-weight:800;color:#ff5c52">TOURNAMENT FULL</div>` : ''}
+        </div>
+        ${liveBlock}
+      </div>
+
+      <div class="grid grid-2">
+        ${topTeams}
+        ${topPlayers}
+      </div>
+    `;
+  } catch (e) {
+    main.innerHTML = emptyHTML('⚠️','Failed to load', e.message);
+  }
+}
+load();
+</script>
+</body>
+</html>

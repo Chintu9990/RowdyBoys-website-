@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container" id="main">Loading…</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/players');
+renderFooter();
+
+const id = getIdFromPath();
+
+async function load() {
+  const main = document.getElementById('main');
+  main.innerHTML = loadingHTML();
+  try {
+    const p = await API.get('/api/players/' + id);
+    const s = p.stats;
+    main.innerHTML = `
+      <div class="card" style="margin-bottom:18px">
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <img class="team-logo lg" src="${p.team_logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'">
+          <div>
+            <h1 class="page-title" style="margin:0 0 4px">${esc(p.name)}</h1>
+            <div style="color:var(--muted);font-size:13px">
+              <a href="/team/${p.team_id}" style="color:var(--orange)">${esc(p.team_name)}</a>
+              · <a href="/tournament/${p.tournament_id}" style="color:var(--orange)">${esc(p.tournament_name||'')}</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-4" style="margin-bottom:20px">
+        <div class="stat"><div class="stat-value">${s.matches||0}</div><div class="stat-label">Matches</div></div>
+        <div class="stat"><div class="stat-value">${s.wins||0}</div><div class="stat-label">Wins</div></div>
+        <div class="stat"><div class="stat-value" style="color:var(--orange)">${s.kills||0}</div><div class="stat-label">Kills</div></div>
+        <div class="stat"><div class="stat-value">${(s.avg_kills||0).toFixed(1)}</div><div class="stat-label">Avg Kills</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-title">Statistics</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:13px">
+          <div><span style="color:var(--muted)">Deaths</span><br><b>${s.deaths||0}</b></div>
+          <div><span style="color:var(--muted)">Rounds Played</span><br><b>${s.rounds_played||0}</b></div>
+          <div><span style="color:var(--muted)">K/D Ratio</span><br><b>${(s.deaths?s.kills/s.deaths:s.kills).toFixed(2)}</b></div>
+        </div>
+      </div>
+
+      <div class="card-title" style="margin-bottom:12px">Recent Performance</div>
+      ${p.recent.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Match</th><th>Date</th><th>Kills</th><th>Result</th></tr></thead>
+        <tbody>${p.recent.map(r => {
+          const won = r.winner_id === p.team_id;
+          const lost = r.winner_id && r.winner_id !== p.team_id;
+          const result = won?'WIN':(lost?'LOSS':'—');
+          const color = won?'#4ade80':(lost?'#ff5c52':'#94a3b8');
+          return `<tr>
+            <td><a href="/match/${r.match_id}" style="font-weight:600">${esc(r.team_a_name)} vs ${esc(r.team_b_name)}</a></td>
+            <td>${fmtDate(r.match_date)}</td>
+            <td><b style="color:var(--orange)">${r.kills}</b></td>
+            <td style="color:${color};font-weight:800">${result}</td>
+          </tr>`;
+        }).join('')}</tbody></table></div>` : emptyHTML('⚔️','No match history')}
+    `;
+  } catch (e) {
+    main.innerHTML = emptyHTML('⚠️','Player not found', e.message);
+  }
+}
+
+load();
+</script>
+</body>
+</html>

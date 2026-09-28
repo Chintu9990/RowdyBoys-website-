@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tournaments · ROWDY BOYS</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<main class="container">
+  <h1 class="page-title">Tournaments</h1>
+  <p class="page-sub">All live and upcoming ROWDY BOYS tournaments</p>
+
+  <div class="card" style="margin-bottom:18px">
+    <div class="grid grid-2" style="gap:10px">
+      <input id="q" placeholder="Search tournaments…">
+      <select id="status">
+        <option value="">All statuses</option>
+        <option value="registration_open">Registration Open</option>
+        <option value="registration_closed">Registration Closed</option>
+        <option value="started">Started</option>
+        <option value="completed">Completed</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="list">Loading…</div>
+</main>
+
+<script src="/js/common.js"></script>
+<script>
+renderNav('/tournaments');
+renderFooter();
+
+async function load() {
+  const list = document.getElementById('list');
+  list.innerHTML = loadingHTML();
+  const q = document.getElementById('q').value.trim();
+  const status = document.getElementById('status').value;
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (status) params.set('status', status);
+
+  try {
+    const data = await API.get('/api/tournaments?' + params);
+    if (!data.length) {
+      list.innerHTML = emptyHTML('🏆','NO TOURNAMENT AVAILABLE','Check back soon.');
+      return;
+    }
+    list.innerHTML = `<div class="grid grid-3">` + data.map(t => `
+      <div class="team-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div>
+            <div class="team-name">${esc(t.name)}</div>
+            <div class="team-meta">${esc(t.game)} · ${esc(t.mode.toUpperCase())} · ${esc(t.format)}</div>
+          </div>
+          ${statusBadge(t.status)}
+        </div>
+        <div class="grid grid-2" style="gap:8px;margin-top:6px">
+          <div class="stat"><div class="stat-value">${t.team_count}/${t.max_teams}</div><div class="stat-label">Teams</div></div>
+          <div class="stat"><div class="stat-value">₹${t.prize_pool}</div><div class="stat-label">Prize</div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <a class="btn btn-primary btn-sm" style="flex:1" href="/tournament/${t.id}">View</a>
+          ${t.status==='registration_open' ? `<a class="btn btn-ghost btn-sm" style="flex:1" href="/register?t=${t.id}">Register</a>` : ''}
+        </div>
+      </div>`).join('') + `</div>`;
+  } catch (e) {
+    list.innerHTML = emptyHTML('⚠️','Failed to load', e.message);
+  }
+}
+
+document.getElementById('q').addEventListener('input', () => { clearTimeout(window._t); window._t=setTimeout(load,300); });
+document.getElementById('status').addEventListener('change', load);
+load();
+</script>
+</body>
+</html>
