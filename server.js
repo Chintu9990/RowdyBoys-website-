@@ -18,6 +18,8 @@ const PORT = process.env.PORT || 3000;
 
 // ensure uploads dir exists
 fs.mkdirSync(path.join(__dirname, 'public', 'uploads', 'logos'), { recursive: true });
+fs.mkdirSync(path.join(__dirname, 'public', 'uploads', 'payments'), { recursive: true });
+fs.mkdirSync(path.join(__dirname, 'public', 'uploads', 'qr'), { recursive: true });
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(express.json({ limit: '2mb' }));
@@ -42,6 +44,13 @@ app.use('/api', miscRoutes);
 
 // static
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
+// Serve uploaded files from persistent disk in production
+if (process.env.NODE_ENV === 'production') {
+  const BASE = '/opt/render/project/src/storage/uploads';
+  app.use('/uploads/logos',    express.static(path.join(BASE, 'logos')));
+  app.use('/uploads/payments', express.static(path.join(BASE, 'payments')));
+  app.use('/uploads/qr',       express.static(path.join(BASE, 'qr')));
+}
 
 // dynamic path fallbacks (serve the right HTML shell; JS reads the id from URL)
 const shells = {
