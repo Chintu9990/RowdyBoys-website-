@@ -157,6 +157,7 @@ async function tabTournaments() {
           <div style="font-size:12px;color:var(--muted)">${esc(t.game)} · ${esc(t.mode)} · ${t.team_count} teams</div>
         </div>
         <div style="display:flex;gap:6px">
+           <button class="btn btn-ghost btn-sm" data-pay="${t.id}">💳 Payment</button>
           <button class="btn btn-ghost btn-sm" data-edit="${t.id}">Edit</button>
           <button class="btn btn-danger btn-sm" data-del="${t.id}">Del</button>
         </div>
@@ -184,6 +185,8 @@ async function tabTournaments() {
 
   p.addEventListener('click', async e => {
     const d = e.target.closest('button[data-del]');
+    const pay = e.target.closest('button[data-pay]');
+    if (pay) { openPaymentConfig(parseInt(pay.dataset.pay)); return; }
     const ed = e.target.closest('button[data-edit]');
     if (d) {
       if (!confirm('Delete tournament and ALL its data?')) return;
@@ -205,6 +208,66 @@ async function editTournament(id) {
   toast('Updated'); loadTab();
 }
 
+async function openPaymentConfig(tid) {
+  const t = await API.get('/api/tournaments/' + tid);
+  const cfg = await API.get(`/api/tournaments/${tid}/payment`);
+
+  const back = document.createElement('div');
+  back.className = 'modal-back open';
+  back.innerHTML = `
+    <div class="modal">
+      <h3>Payment Config — ${esc(t.name)}</h3>
+      <div style="background:rgba(255,138,0,.08);border:1px solid rgba(255,138,0,.3);border-radius:10px;padding:12px;font-size:13px;margin-bottom:14px">
+        Entry Fee: <b>₹${t.entry_fee}</b>${t.entry_fee>0?'':' — payment section will not show to users'}
+      </div>
+
+      <div class="form-group">
+        <label>UPI ID</label>
+        <input id="cfg-upi-id" value="${esc(cfg.upi_id||'')}" placeholder="e.g. rowdyboys@upi">
+      </div>
+
+      <div class="form-group">
+        <label>UPI QR Image</label>
+        ${cfg.upi_qr ? `<img src="${cfg.upi_qr}" style="max-width:140px;background:#fff;padding:8px;border-radius:8px;margin-bottom:8px">` : ''}
+        <input type="file" id="cfg-qr-file" accept="image/*">
+        <small style="color:var(--muted)">Upload QR image for your UPI. Max 2MB.</small>
+      </div>
+
+      <div class="form-group">
+        <label>Cash Instructions</label>
+        <textarea id="cfg-cash" placeholder="e.g. Pay to admin Rahul at the venue before match day.">${esc(cfg.cash_instructions||'')}</textarea>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-ghost" id="cfg-close" style="flex:1">Cancel</button>
+        <button class="btn btn-primary" id="cfg-save" style="flex:1">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(back);
+
+  document.getElementById('cfg-close').onclick = () => back.remove();
+  back.addEventListener('click', e => { if (e.target === back) back.remove(); });
+
+  document.getElementById('cfg-save').onclick = async () => {
+    try {
+      let qrPath = cfg.upi_qr || '';
+      const file = document.getElementById('cfg-qr-file').files[0];
+      if (file) {
+        const fd = new FormData();
+        fd.append('qr', file);
+        const up = await API.postForm('/api/teams/payment/qr', fd);
+        qrPath = up.path;
+      }
+      await API.put(`/api/tournaments/${tid}/payment`, {
+        upi_id: document.getElementById('cfg-upi-id').value.trim(),
+        upi_qr: qrPath,
+        cash_instructions: document.getElementById('cfg-cash').value.trim()
+      });
+      toast('Payment config saved');
+      back.remove();
+    } catch (err) { toast(err.message, true); }
+  };
+}
 /* ---------- TEAMS ---------- */
 async function tabTeams() {
   const p = document.getElementById('panel');
@@ -228,20 +291,32 @@ async function tabTeams() {
     </div>
 
     <div class="card-title">All Teams (${all.teams.length})</div>
-    ${all.teams.map(t => `
-      <div class="data-row">
-        <div style="display:flex;gap:10px;align-items:center">
-          <img src="${t.logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'" style="width:36px;height:36px;border-radius:8px">
-          <div>
-            <div style="font-weight:700">${esc(t.name)}</div>
-            <div style="font-size:11px;color:var(--muted)">${esc(t.tournament_name||'')} · ${esc(t.type)} · ${t.status}</div>
-          </div>
+${all.teams.map(t => `
+  <div class="data-row">
+    <div style="display:flex;gap:10px;align-items:center;flex:1">
+      <img src="${t.logo||'/img/default-logo.svg'}" onerror="this.src='/img/default-logo.svg'" style="width:36px;height:36px;border-radius:8px">
+      <div>
+        <div style="font-weight:700">${esc(t.name)}</div>
+        <div style="font-size:11px;color:var(--muted)">
+          ${esc(t.tournament_name||'')} · ${esc(t.type)} · ${t.status}
+          ${t.entry_fee>0 ? ` · <b style="color:${
+            t.payment_status==='verified'?'#4ade80':
+            t.payment_status==='pending'?'#fbbf24':
+            t.payment_status==='rejected'?'#ff5c52':'#94a3b8'
+          }">PAY: ${t.payment_status.toUpperCase()}${t.payment_method?' ('+t.payment_method.toUpperCase()+')':''}</b>` : ''}
         </div>
-        <div style="display:flex;gap:6px">
-          <a class="btn btn-ghost btn-sm" href="/team/${t.id}" target="_blank">View</a>
-          <button class="btn btn-danger btn-sm" data-del="${t.id}">Del</button>
-        </div>
-      </div>`).join('')}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${t.entry_fee>0 && t.payment_status==='pending' ? `
+        <button class="btn btn-primary btn-sm" data-payok="${t.id}">✓ Pay</button>
+        <button class="btn btn-danger btn-sm" data-payno="${t.id}">✗ Pay</button>
+      ` : ''}
+      ${t.payment_proof ? `<a class="btn btn-ghost btn-sm" target="_blank" href="${t.payment_proof}">Proof</a>` : ''}
+      <a class="btn btn-ghost btn-sm" href="/team/${t.id}" target="_blank">View</a>
+      <button class="btn btn-danger btn-sm" data-del="${t.id}">Del</button>
+    </div>
+  </div>`).join('')}
   `;
 
   p.querySelectorAll('button[data-app]').forEach(b => b.addEventListener('click', async () => {
@@ -257,6 +332,17 @@ async function tabTeams() {
     await API.del('/api/teams/' + b.dataset.del);
     toast('Deleted'); loadTab();
   }));
+  p.querySelectorAll('button[data-payok]').forEach(b => b.addEventListener('click', async () => {
+  await API.put('/api/teams/' + b.dataset.payok + '/payment', { payment_status: 'verified' });
+  toast('Payment verified · Team auto-approved');
+  loadTab();
+}));
+p.querySelectorAll('button[data-payno]').forEach(b => b.addEventListener('click', async () => {
+  const reason = prompt('Reason for rejecting payment?', '') || '';
+  await API.put('/api/teams/' + b.dataset.payno + '/payment', { payment_status: 'rejected', payment_note: reason });
+  toast('Payment rejected');
+  loadTab();
+}));
 }
 
 /* ---------- MATCHES ---------- */
