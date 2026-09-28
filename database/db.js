@@ -142,5 +142,20 @@ if (!existing) {
     .run(adminUser, bcrypt.hashSync(adminPass, 10));
   console.log('✔ Admin seeded:', adminUser);
 }
+// ---------- PAYMENT MIGRATIONS ----------
+function addCol(table, col, def) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+  if (!cols.includes(col)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+    console.log(`  + added ${table}.${col}`);
+  }
+}
 
+addCol('tournaments', 'upi_id',            "TEXT DEFAULT ''");
+addCol('tournaments', 'upi_qr',            "TEXT DEFAULT ''");
+addCol('tournaments', 'cash_instructions', "TEXT DEFAULT ''");
+addCol('teams',       'payment_method',    "TEXT DEFAULT ''");
+addCol('teams',       'payment_status',    "TEXT DEFAULT 'unpaid'");
+addCol('teams',       'payment_proof',     "TEXT DEFAULT ''");
+addCol('teams',       'payment_note',      "TEXT DEFAULT ''");
 module.exports = db;
