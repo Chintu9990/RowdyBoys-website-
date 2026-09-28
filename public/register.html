@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Register Team · ROWDY BOYS</title>
 <link rel="stylesheet" href="/css/style.css">
+<style>
+  .pay-qr{background:#fff;padding:14px;border-radius:12px;text-align:center;max-width:280px;margin:12px auto}
+  .pay-qr img{max-width:240px;margin:0 auto;border-radius:8px}
+  .pay-qr .upi-id{font-family:monospace;font-size:14px;font-weight:800;color:#111;margin-top:8px}
+  .pay-info{background:rgba(255,138,0,.08);border:1px solid rgba(255,138,0,.3);
+            border-radius:10px;padding:12px;font-size:13px;line-height:1.6;margin:10px 0}
+</style>
 </head>
 <body>
 <main class="container">
@@ -21,6 +28,7 @@ renderFooter();
 const params = new URLSearchParams(location.search);
 let preselectedT = params.get('t') ? parseInt(params.get('t')) : null;
 let currentType = 'solo';
+let currentTournament = null;
 
 async function load() {
   const wrap = document.getElementById('wrap');
@@ -32,13 +40,14 @@ async function load() {
     }
 
     const pickT = preselectedT && tourneys.find(x=>x.id===preselectedT) ? preselectedT : tourneys[0].id;
+    currentTournament = tourneys.find(t => t.id === pickT);
 
     wrap.innerHTML = `
       <form id="regForm" class="card" style="max-width:640px;margin:0 auto">
         <div class="form-group">
           <label>Tournament</label>
           <select id="tournament_id" required>
-            ${tourneys.map(t=>`<option value="${t.id}" ${t.id===pickT?'selected':''}>${esc(t.name)} (${esc(t.mode.toUpperCase())})</option>`).join('')}
+            ${tourneys.map(t=>`<option value="${t.id}" ${t.id===pickT?'selected':''}>${esc(t.name)} (${esc(t.mode.toUpperCase())})${t.entry_fee>0?` — ₹${t.entry_fee}`:' — FREE'}</option>`).join('')}
           </select>
         </div>
 
@@ -69,12 +78,20 @@ async function load() {
           <input type="file" id="logo" accept="image/png,image/jpeg,image/webp,image/gif">
         </div>
 
+        <div id="paymentSection"></div>
+
         <button class="btn btn-primary" type="submit" style="width:100%" id="submitBtn">Register Team</button>
       </form>
     `;
 
     setupTypePicker();
     renderPlayers('solo');
+    await renderPaymentSection(pickT);
+
+    document.getElementById('tournament_id').addEventListener('change', async e => {
+      currentTournament = tourneys.find(t => t.id === parseInt(e.target.value));
+      await renderPaymentSection(parseInt(e.target.value));
+    });
     document.getElementById('regForm').addEventListener('submit', submit);
 
   } catch (e) {
@@ -111,6 +128,88 @@ function renderPlayers(type) {
     </div>`).join('');
 }
 
+async function renderPaymentSection(tid) {
+  const el = document.getElementById('paymentSection');
+  const tourney = currentTournament;
+  if (!tourney || !tourney.entry_fee || tourney.entry_fee <= 0) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const cfg = await API.get(`/api/tournaments/${tid}/payment`);
+
+  el.innerHTML = `
+    <div class="pay-info">
+      <b style="color:var(--orange)">ENTRY FEE: ₹${tourney.entry_fee}</b><br>
+      Choose a payment method below. Your registration will be marked <b>pending</b> until the admin verifies your payment.
+    </div>
+
+    <div class="form-group">
+      <label>Payment Method</label>
+      <div class="type-picker" id="payPicker">
+        <button type="button" data-pay="upi">📱 UPI</button>
+        <button type="button" data-pay="cash">💵 Cash</button>
+      </div>
+      <input type="hidden" id="payment_method" value="">
+    </div>
+
+    <div id="payDetails"></div>
+  `;
+
+  document.getElementById('payPicker').addEventListener('click', e => {
+    const b = e.target.closest('button[data-pay]');
+    if (!b) return;
+    document.querySelectorAll('#payPicker button').forEach(x =>
+      x.classList.toggle('active', x.dataset.pay === b.dataset.pay));
+    document.getElementById('payment_method').value = b.dataset.pay;
+    renderPayDetails(b.dataset.pay, cfg);
+  });
+}
+
+function renderPayDetails(method, cfg) {
+  const el = document.getElementById('payDetails');
+  if (method === 'upi') {
+    el.innerHTML = `
+      <div class="pay-qr">
+        ${cfg.upi_qr
+          ? `<img src="${cfg.upi_qr}" alt="UPI QR" onerror="this.parentElement.innerHTML='<div style=\\'color:#000;font-size:12px;padding:20px\\'>QR not uploaded yet</div>'">`
+          : `<div style="color:#000;font-size:12px;padding:20px">Admin has not uploaded QR yet</div>`}
+        ${cfg.upi_id ? `<div class="upi-id">UPI ID: ${esc(cfg.upi_id)}</div>` : ''}
+      </div>
+      <div class="pay-info">
+        Scan the QR or pay to the UPI ID above.<br>
+        Amount: <b>₹${currentTournament.entry_fee}</b><br>
+        After paying, upload a screenshot below (or paste your UPI reference number).
+      </div>
+      <div class="form-group">
+        <label>Payment Screenshot (required if no ref note)</label>
+        <input type="file" id="payment_proof" accept="image/png,image/jpeg,image/webp,image/gif">
+      </div>
+      <div class="form-group">
+        <label>UPI Reference / UTR (optional)</label>
+        <input id="payment_note" maxlength="80" placeholder="e.g. 4012xxxxxx">
+      </div>
+    `;
+  } else if (method === 'cash') {
+    el.innerHTML = `
+      <div class="pay-info">
+        <b>Cash Payment</b><br>
+        ${cfg.cash_instructions
+          ? esc(cfg.cash_instructions).replace(/\n/g,'<br>')
+          : 'Pay the entry fee in person to the tournament admin.'}<br><br>
+        Amount: <b>₹${currentTournament.entry_fee}</b><br>
+        After paying, register below. The admin will verify your payment manually.
+      </div>
+      <div class="form-group">
+        <label>Note (optional)</label>
+        <input id="payment_note" maxlength="80" placeholder="e.g. Paid to Rahul on 25th">
+      </div>
+    `;
+  } else {
+    el.innerHTML = '';
+  }
+}
+
 async function submit(e) {
   e.preventDefault();
   const btn = document.getElementById('submitBtn');
@@ -128,18 +227,37 @@ async function submit(e) {
       players.push({ name, uid });
     }
 
+    const fee = currentTournament.entry_fee || 0;
+    const methodEl = document.getElementById('payment_method');
+    const method = methodEl ? methodEl.value : '';
+
+    if (fee > 0 && !method) {
+      throw new Error('Please select a payment method (UPI or Cash)');
+    }
+
     const fd = new FormData();
     fd.append('tournament_id', document.getElementById('tournament_id').value);
     fd.append('name', document.getElementById('teamName').value.trim());
     fd.append('type', type);
     fd.append('contact', document.getElementById('contact').value.trim());
     fd.append('players', JSON.stringify(players));
+    if (method) fd.append('payment_method', method);
+
+    const noteEl = document.getElementById('payment_note');
+    if (noteEl && noteEl.value.trim()) fd.append('payment_note', noteEl.value.trim());
+
     const logo = document.getElementById('logo').files[0];
     if (logo) fd.append('logo', logo);
 
+    const proofEl = document.getElementById('payment_proof');
+    if (proofEl && proofEl.files[0]) fd.append('payment_proof', proofEl.files[0]);
+
     const r = await API.postForm('/api/teams/register', fd);
-    toast('✓ Team registered! Awaiting admin approval.');
-    setTimeout(() => location.href = '/team/' + r.team_id, 1000);
+    const msg = fee > 0
+      ? '✓ Registered! Awaiting payment + team verification by admin.'
+      : '✓ Team registered! Awaiting admin approval.';
+    toast(msg);
+    setTimeout(() => location.href = '/team/' + r.team_id, 1400);
   } catch (err) {
     toast(err.message, true);
     btn.disabled = false;
