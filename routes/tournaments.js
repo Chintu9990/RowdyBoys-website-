@@ -135,7 +135,23 @@ router.delete('/:id/rules/:ruleId', requireAdmin, (req, res) => {
   logAction(req.session.adminId, 'DELETE_RULE', `Rule ${req.params.ruleId}`);
   res.json({ ok: true });
 });
+/* ---------- PAYMENT CONFIG ---------- */
+router.get('/:id/payment', (req, res) => {
+  const t = db.prepare(
+    'SELECT id, name, entry_fee, upi_id, upi_qr, cash_instructions FROM tournaments WHERE id=?'
+  ).get(req.params.id);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  res.json(t);
+});
 
+router.put('/:id/payment', requireAdmin, (req, res) => {
+  const { upi_id, upi_qr, cash_instructions } = req.body;
+  db.prepare(
+    'UPDATE tournaments SET upi_id=?, upi_qr=?, cash_instructions=? WHERE id=?'
+  ).run(upi_id || '', upi_qr || '', cash_instructions || '', req.params.id);
+  logAction(req.session.adminId, 'UPDATE_PAYMENT_CONFIG', `Tournament ${req.params.id}`);
+  res.json({ ok: true });
+});
 /* ---------- BRACKET ---------- */
 router.get('/:id/bracket', (req, res) => {
   const rows = db.prepare(`
