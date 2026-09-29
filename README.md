@@ -20,8 +20,8 @@ npm start
 Open http://localhost:3000
 
 Default admin (change in .env):
-- username: `admin`
-- password: `rowdyboys123`
+- username: 
+- password: 
 
 Admin panel: `/admin`
 
