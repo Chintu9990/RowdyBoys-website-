@@ -158,4 +158,68 @@ addCol('teams',       'payment_method',    "TEXT DEFAULT ''");
 addCol('teams',       'payment_status',    "TEXT DEFAULT 'unpaid'");
 addCol('teams',       'payment_proof',     "TEXT DEFAULT ''");
 addCol('teams',       'payment_note',      "TEXT DEFAULT ''");
+
+// ---------- AUCTION TABLES ----------
+db.exec(`
+CREATE TABLE IF NOT EXISTS auction_franchises (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,
+  short_name TEXT,
+  logo TEXT,
+  purse_total REAL DEFAULT 10000000,
+  purse_remaining REAL DEFAULT 10000000,
+  owner_username TEXT UNIQUE,
+  owner_password_hash TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS auction_players (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  uid TEXT,
+  role TEXT DEFAULT 'player',
+  base_price REAL DEFAULT 100000,
+  avatar TEXT,
+  status TEXT DEFAULT 'available',
+  franchise_id INTEGER,
+  sold_price REAL,
+  sold_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(franchise_id) REFERENCES auction_franchises(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS auction_bids (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id INTEGER NOT NULL,
+  franchise_id INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS auction_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  current_player_id INTEGER,
+  current_bid REAL DEFAULT 0,
+  current_bidder_id INTEGER,
+  base_price REAL DEFAULT 0,
+  status TEXT DEFAULT 'idle',
+  timer_end_at INTEGER,
+  timer_seconds INTEGER DEFAULT 30,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS auction_config (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  min_increment REAL DEFAULT 50000,
+  default_timer INTEGER DEFAULT 30,
+  default_purse REAL DEFAULT 10000000
+);
+
+CREATE INDEX IF NOT EXISTS idx_auction_players_status ON auction_players(status);
+CREATE INDEX IF NOT EXISTS idx_auction_players_franchise ON auction_players(franchise_id);
+CREATE INDEX IF NOT EXISTS idx_auction_bids_player ON auction_bids(player_id);
+`);
+
+db.prepare('INSERT OR IGNORE INTO auction_state (id) VALUES (1)').run();
+db.prepare('INSERT OR IGNORE INTO auction_config (id) VALUES (1)').run();
 module.exports = db;
